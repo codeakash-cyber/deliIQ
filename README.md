@@ -1,4 +1,4 @@
-# DeliIQ - Delivery Delay Predictor
+# DeliIQ - Delivery Intelligence.
 
 ## Overview
 DeliIQ is an interactive machine learning web application built with Streamlit. It predicts food delivery delay risks before orders are placed or dispatched. By using a 30-minute threshold, the system classifies deliveries as either on-time or delayed based on traffic levels, weather conditions, distance, and rider metrics.
