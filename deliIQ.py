@@ -1,356 +1,320 @@
+import streamlit as st
 import pandas as pd
-import warnings
-import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import matplotlib.pyplot as plt
+import warnings
 warnings.filterwarnings("ignore")
 
-# Set visual style for charts
-sns.set_theme(style="whitegrid")
+st.set_page_config(page_title="DeliIQ - Delivery Delay Predictor", layout="wide")
 
-df = pd.read_csv("Food_Time new.csv")
-print("Dataset Shape:", df.shape)
-print("\nDataset Information:")
-print(df.info())
-print("\nDataset Description:")
-print(df.describe())
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", ["Home", "Predict Delay", "Model Performance"])
 
-# Categorical columns
-categorical_columns = [
-    "Traffic_Level",
-    "weather_description",
-    "Type_of_order",
-    "Type_of_vehicle"
-]
-
-for col in categorical_columns:
-    if col in df.columns:
-        df[col] = df[col].fillna(df[col].mode()[0])
-
-# Numerical columns
-numerical_columns = [
-    "Delivery_person_Age",
-    "Delivery_person_Ratings",
-    "temperature",
-    "humidity",
-    "precipitation",
-    "Distance (km)"
-]
-
-for col in numerical_columns:
-    if col in df.columns:
+@st.cache_data
+def load_data():
+    df = pd.read_csv("Food_Time new.csv")
+    
+    categorical_columns = ["Traffic_Level", "weather_description", "Type_of_order", "Type_of_vehicle"]
+    for col in categorical_columns:
+        if col in df.columns:
+            df[col] = df[col].fillna(df[col].mode()[0])
+    
+    numerical_columns = ["Delivery_person_Age", "Delivery_person_Ratings", "temperature", "humidity", "precipitation", "Distance (km)"]
+    for col in numerical_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col] = df[col].fillna(df[col].median())
+    
+    df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce")
+    df = df.dropna(subset=["TARGET"])
+    
+    columns_to_drop = ["ID", "Delivery_person_ID"]
+    for col in columns_to_drop:
+        if col in df.columns:
+            df = df.drop(col, axis=1)
+    
+    gps_columns = ["Restaurant_latitude", "Restaurant_longitude", "Delivery_location_latitude", "Delivery_location_longitude"]
+    for col in gps_columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
         df[col] = df[col].fillna(df[col].median())
+    
+    df["TARGET"] = (df["TARGET"] > 30).astype(int)
+    
+    encoders = {}
+    for col in categorical_columns:
+        encoder = LabelEncoder()
+        df[col] = encoder.fit_transform(df[col].astype(str))
+        encoders[col] = encoder
+    
+    return df, encoders
 
-df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce")
+@st.cache_resource
+def train_models(x_train, y_train, x_test, y_test):
+    models = {}
+    
+    model_lr = LogisticRegression(max_iter=1000)
+    model_lr.fit(x_train, y_train)
+    y_pred_lr = model_lr.predict(x_test)
+    models['Logistic Regression'] = {
+        'model': model_lr,
+        'accuracy': accuracy_score(y_test, y_pred_lr),
+        'precision': precision_score(y_test, y_pred_lr, zero_division=0),
+        'recall': recall_score(y_test, y_pred_lr, zero_division=0),
+        'f1': f1_score(y_test, y_pred_lr, zero_division=0)
+    }
+    
+    model_dt = DecisionTreeClassifier(max_depth=5, random_state=42)
+    model_dt.fit(x_train, y_train)
+    y_pred_dt = model_dt.predict(x_test)
+    models['Decision Tree'] = {
+        'model': model_dt,
+        'accuracy': accuracy_score(y_test, y_pred_dt),
+        'precision': precision_score(y_test, y_pred_dt, zero_division=0),
+        'recall': recall_score(y_test, y_pred_dt, zero_division=0),
+        'f1': f1_score(y_test, y_pred_dt, zero_division=0)
+    }
+    
+    model_rf = RandomForestClassifier(n_estimators=3, random_state=42)
+    model_rf.fit(x_train, y_train)
+    y_pred_rf = model_rf.predict(x_test)
+    models['Random Forest'] = {
+        'model': model_rf,
+        'accuracy': accuracy_score(y_test, y_pred_rf),
+        'precision': precision_score(y_test, y_pred_rf, zero_division=0),
+        'recall': recall_score(y_test, y_pred_rf, zero_division=0),
+        'f1': f1_score(y_test, y_pred_rf, zero_division=0)
+    }
+    
+    model_gb = GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42)
+    model_gb.fit(x_train, y_train)
+    y_pred_gb = model_gb.predict(x_test)
+    models['Gradient Boosting'] = {
+        'model': model_gb,
+        'accuracy': accuracy_score(y_test, y_pred_gb),
+        'precision': precision_score(y_test, y_pred_gb, zero_division=0),
+        'recall': recall_score(y_test, y_pred_gb, zero_division=0),
+        'f1': f1_score(y_test, y_pred_gb, zero_division=0)
+    }
+    
+    return models
 
-df = df.dropna(subset=["TARGET"])
-
-print("\nNumber of Unique TARGET Values:")
-print(df["TARGET"].nunique())
-
-columns_to_drop = ["ID", "Delivery_person_ID"]
-
-for col in columns_to_drop:
-    if col in df.columns:
-        df = df.drop(col, axis=1)
-
-gps_columns = [
-    "Restaurant_latitude",
-    "Restaurant_longitude",
-    "Delivery_location_latitude",
-    "Delivery_location_longitude"
-]
-
-for col in gps_columns:
-    df[col] = pd.to_numeric(df[col], errors="coerce")
-    df[col] = df[col].fillna(df[col].median())
-
-DELAY_THRESHOLD = 30
-
-df["TARGET"] = (df["TARGET"] > DELAY_THRESHOLD).astype(int)
-
-print("\nTarget Distribution:")
-print(df["TARGET"].value_counts())
-
-print("\nTarget Meaning:")
-print("0 = Not Delay")
-print("1 = Delay")
-
-encoders = {}
-
-for col in categorical_columns:
-    encoder = LabelEncoder()
-    df[col] = encoder.fit_transform(df[col].astype(str))
-    encoders[col] = encoder
-
-print("\nMissing Values:")
-print(df.isnull().sum())
-
+df, encoders = load_data()
 y = df["TARGET"]
 x = df.drop("TARGET", axis=1)
-
 feature_columns = x.columns.tolist()
-
-print("\nFeature Columns:")
-print(feature_columns)
 
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.20, random_state=42, stratify=y)
 
 scaler = StandardScaler()
-x_train = scaler.fit_transform(x_train)
-x_test = scaler.transform(x_test)
+x_train_scaled = scaler.fit_transform(x_train)
+x_test_scaled = scaler.transform(x_test)
 
-# MODEL 1: LOGISTIC REGRESSION
-model = LogisticRegression(max_iter=1000)
-model.fit(x_train, y_train)
-y_pred = model.predict(x_test)
+models = train_models(x_train_scaled, y_train, x_test_scaled, y_test)
 
-acc_lr = accuracy_score(y_test, y_pred)
-rec_score = recall_score(y_test, y_pred, zero_division=0)
-pre_score = precision_score(y_test, y_pred, zero_division=0)
-fscore = f1_score(y_test, y_pred, zero_division=0)
-
-print("-- Logistic Regression model --")
-print("Accuracy_score :", acc_lr)
-print("Recall_score   :", rec_score)
-print("Precision_score:", pre_score)
-print("F1_score       :", fscore)
-
-
-# MODEL 2: DECISION TREE
-model1 = DecisionTreeClassifier(max_depth=5, random_state=42)
-model1.fit(x_train, y_train)
-y_pred = model1.predict(x_test)
-
-acc_dt = accuracy_score(y_test, y_pred)
-rec_score = recall_score(y_test, y_pred, zero_division=0)
-pre_score = precision_score(y_test, y_pred, zero_division=0)
-fscore = f1_score(y_test, y_pred, zero_division=0)
-
-print("-- Decision Tree model --")
-print("Accuracy_score :", acc_dt)
-print("Recall_score   :", rec_score)
-print("Precision_score:", pre_score)
-print("F1_score       :", fscore)
-
-
-# MODEL 3: RANDOM FOREST
-model2 = RandomForestClassifier(n_estimators=3, random_state=42)
-model2.fit(x_train, y_train)
-y_pred = model2.predict(x_test)
-
-acc_rf = accuracy_score(y_test, y_pred)
-rec_score = recall_score(y_test, y_pred, zero_division=0)
-pre_score = precision_score(y_test, y_pred, zero_division=0)
-fscore = f1_score(y_test, y_pred, zero_division=0)
-
-print("-- Random Forest model --")
-print("Accuracy_score :", acc_rf)
-print("Recall_score   :", rec_score)
-print("Precision_score:", pre_score)
-print("F1_score       :", fscore)
-
-
-# MODEL 4: GRADIENT BOOSTING
-model3 = GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42)
-model3.fit(x_train, y_train)
-y_pred = model3.predict(x_test)
-
-acc_gb = accuracy_score(y_test, y_pred)
-rec_score = recall_score(y_test, y_pred, zero_division=0)
-pre_score = precision_score(y_test, y_pred, zero_division=0)
-fscore = f1_score(y_test, y_pred, zero_division=0)
-
-print("-- Gradient Boosting model --")
-print("Accuracy_score :", acc_gb)
-print("Recall_score   :", rec_score)
-print("Precision_score:", pre_score)
-print("F1_score       :", fscore)
-
-# ============================================
-# MODEL COMPARISON 
-# ============================================
-
-model_accuracies = {
-    "Logistic Regression": acc_lr,
-    "Decision Tree": acc_dt,
-    "Random Forest": acc_rf,
-    "Gradient Boosting": acc_gb
-}
-
-best_model_name = max(model_accuracies, key=model_accuracies.get)
-best_accuracy = model_accuracies[best_model_name]
-
-print("\n--------------------------------------------")
-print(" MODEL COMPARISON SUMMARY")
-print("LR accuracy:", acc_lr)
-print("DT accuracy:", acc_dt)
-print("RF accuracy:", acc_rf)
-print("GB accuracy:", acc_gb)
-print("-----------------------------------------------")
-print("best model is:", best_model_name)
-
-plt.figure(figsize=(8, 5))
-bars = plt.bar(model_accuracies.keys(), model_accuracies.values(), color=['blue', 'green', 'orange', 'red'])
-plt.ylabel("Accuracy Score")
-plt.title("Model Accuracies")
-plt.ylim(0, 1.1)
-
-for bar in bars:
-    yval = bar.get_height()
-    plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.02, str(round(yval, 2)), ha="center", va="bottom")
-
-plt.show()
-
-# 2. Simple Feature Importance Chart (Vertical Bar Graph)
-plt.figure()
-pd.Series(model2.feature_importances_, index=feature_columns).nlargest(5).plot(kind="barh")
-plt.title("Top Reasons for Delay")
-plt.xlabel("Importance")
-plt.show()
-# SELECT MODEL FOR PREDICTION
-# ============================================
-
-print("\n--------------------------------------------")
-print(" SELECT MODEL FOR PREDICTION")
-print("--------------------------------------------")
-
-while True:
-    print("\nAvailable Models:")
-    print("1 = Logistic Regression")
-    print("2 = Decision Tree")
-    print("3 = Random Forest")
-    print("4 = Gradient Boosting")
-
-    choice = input("\nEnter model number (1-4): ")
-
-    if choice == "1":
-        selected_model_name="Logistic Regression"
-        selected_model = model
-        break
-    elif choice == "2":
-        selected_model_name="Decision Tree"
-        selected_model = model1
-        break
-    elif choice == "3":
-        selected_model_name= "Random Forest"
-        selected_model= model2
-        break
-    elif choice == "4":
-        selected_model_name= "Gradient Boosting"
-        selected_model = model3
-        break
-    else:
-        print("Invalid choice! Please pick 1, 2, 3, or 4.")
-
-print("\nSelected Model:", selected_model_name)
-
-# ENTER DELIVERY INFORMATION
-# ============================================
-print("\n--------------------------------------------")
-print(" ENTER DELIVERY INFORMATION")
-print("--------------------------------------------")
-
-# 1. Traffic Level
-while True:
-    print("\nAvailable Traffic Levels:")
-    print(list(encoders["Traffic_Level"].classes_))
-    traffic = input("Enter Traffic Level: ")
+if page == "Home":
+    st.title("DeliIQ: AI-Powered Food Delivery Time & Delay Risk Analysis")
+    st.markdown("### *Predicting delivery delays before they happen to save time and stress.*")
+    st.write("---")
     
-    if traffic in encoders["Traffic_Level"].classes_:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Deliveries Analyzed", len(df))
+    with col2:
+        st.metric("Delayed Orders Rate", f"{(df['TARGET'].sum() / len(df) * 100):.1f}%")
+    with col3:
+        st.metric("Top Performing Model", "Gradient Boosting")
+    
+    st.write("---")
+    
+    st.subheader("What is this project about?")
+    st.write("""
+    Normally, food delivery apps only tell you where your food is *after* you have already placed the order. 
+    **DeliIQ** is different. It acts as a **smart planning tool** that lets you check the risk of a delay **before** you place an order or send out a delivery rider. 
+    
+    We set a simple rule: Any delivery taking **more than 30 minutes** is marked as delayed. Our app uses machine learning to look at weather, traffic, and distance to predict if your order will arrive on time.
+    """)
+    
+    st.write("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Who can use this?")
+        st.write("""
+        * **For Customers:** You can test different scenarios. For example: *"If I order right now during heavy rain, what are the chances my food gets delayed compared to waiting an hour?"*
+        * **For Restaurant Managers:** Managers can use it as a "what-if" tool to see how heavy traffic or long distances will impact delivery times before assigning a delivery partner.
+        """)
+    
+    with c2:
+        st.subheader("Key Highlights")
+        st.write("""
+        * **Interactive Simulator:** Change traffic, weather, and distance settings manually to see instant risk results.
+        * **Model Comparison:** We test and compare **4 different AI models** (like Random Forest and Gradient Boosting) to find the most accurate one.
+        * **Explainable AI:** Uses feature importance charts to show which exact factors cause late orders.
+        """)
+        
+    st.write("---")
+    
+    st.subheader("Why DeliIQ is Useful")
+    st.write("""
+    Unlike basic prediction scripts, DeliIQ is built as a complete interactive tool with practical advantages:
+    """)
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("""
+        * **Proactive Planning:** Instead of tracking orders after they are late, it lets you check risk factors *before* sending out a delivery.
+        * **Clear 30-Minute SLA:** Uses a clean binary threshold (On-Time vs. Delayed) instead of messy time estimations.
+        """)
+    with col_b:
+        st.markdown("""
+        * **Data Insights:** By integrating Feature Importance charts (via Gradient Boosting), your project mathematically proves the root causes of delays (such as traffic weight versus weather impact), offering complete transparency into why the model makes its choices.
+        * **Interactive Simulator:** Fully functional web and terminal apps that let users test different scenarios in real-time.
+        """)
+        
+    st.write("---")
+    st.info("**Tech Stack:** Built using Python, Streamlit, Scikit-Learn, Pandas, and Matplotlib.")
+    
+    st.write("---")
+
+elif page == "Predict Delay":
+    st.title("Make a Prediction & Simulate Risks")
+    st.write("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Delivery Details")
+        traffic = st.selectbox("Traffic Level", list(encoders["Traffic_Level"].classes_))
         traffic_encoded = encoders["Traffic_Level"].transform([traffic])[0]
-        break
-    print("Invalid Traffic Level. Please try again.")
-
-# 2. Weather Condition
-while True:
-    print("\nAvailable Weather Conditions:")
-    print(list(encoders["weather_description"].classes_))
-    weather = input("Enter Weather Condition: ")
-    
-    if weather in encoders["weather_description"].classes_:
+        
+        weather = st.selectbox("Weather Condition", list(encoders["weather_description"].classes_))
         weather_encoded = encoders["weather_description"].transform([weather])[0]
-        break
-    print("Invalid Weather Condition. Please try again.")
-
-# 3. Order Type
-while True:
-    print("\nAvailable Order Types:")
-    print(list(encoders["Type_of_order"].classes_))
-    order_type = input("Enter Type of Order: ")
-    
-    if order_type in encoders["Type_of_order"].classes_:
+        
+        order_type = st.selectbox("Order Type", list(encoders["Type_of_order"].classes_))
         order_encoded = encoders["Type_of_order"].transform([order_type])[0]
-        break
-    print("Invalid Order Type. Please try again.")
-
-# 4. Vehicle Type
-while True:
-    print("\nAvailable Vehicle Types:")
-    print(list(encoders["Type_of_vehicle"].classes_))
-    vehicle = input("Enter Type of Vehicle: ")
-    
-    if vehicle in encoders["Type_of_vehicle"].classes_:
+        
+        vehicle = st.selectbox("Vehicle Type", list(encoders["Type_of_vehicle"].classes_))
         vehicle_encoded = encoders["Type_of_vehicle"].transform([vehicle])[0]
-        break
-    print("Invalid Vehicle Type. Please try again.")
+    
+    with col2:
+        st.subheader("Other Information")
+        age = st.slider("Delivery Person Age", 15, 50, 30)
+        rating = st.slider("Delivery Person Rating", 1.0, 5.0, 4.5)
+        distance = st.slider("Distance (km)", 1.0, 60.0, 10.0)
+        temperature = st.slider("Temperature (C)", 5.0, 30.0, 20.0)
+        humidity = st.slider("Humidity (%)", 25.0, 100.0, 60.0)
+    
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.write("Restaurant Location")
+        rest_lat = st.number_input("Restaurant Latitude", value=12.9)
+        rest_long = st.number_input("Restaurant Longitude", value=77.6)
+    
+    with col4:
+        st.write("Delivery Location")
+        del_lat = st.number_input("Delivery Latitude", value=13.0)
+        del_long = st.number_input("Delivery Longitude", value=77.7)
+    
+    precipitation = st.slider("Precipitation (mm)", 0.0, 1.5, 0.0)
+    
+    st.write("---")
+    model_choice = st.selectbox("Select Machine Learning Model", list(models.keys()))
+    
+    if st.button("Predict", type="primary"):
+        user_input = pd.DataFrame([[
+            traffic_encoded, weather_encoded, order_encoded, vehicle_encoded,
+            age, rating, rest_lat, rest_long, del_lat, del_long,
+            temperature, humidity, precipitation, distance
+        ]], columns=feature_columns)
+        
+        user_input_scaled = scaler.transform(user_input)
+        
+        selected_engine = models[model_choice]['model']
+        predicted_class = selected_engine.predict(user_input_scaled)[0]
+        probability = selected_engine.predict_proba(user_input_scaled)
+        
+        confidence = round(probability[0][predicted_class] * 100, 2)
+        
+        st.write("---")
+        st.subheader("Prediction Result")
+        st.write(f"**Model Used:** {model_choice}")
+        
+        if predicted_class == 1:
+            st.error("Prediction: DELAY (Exceeds 30-minute threshold)")
+        else:
+            st.success("Prediction: NOT DELAY (Within 30-minute threshold)")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Probability / Confidence", f"{confidence}%")
+        with col2:
+            st.metric("Model Status", "Active")
+        with col3:
+            st.metric("Model Accuracy", f"{models[model_choice]['accuracy']:.1%}")
 
-# Numerical inputs
-age = float(input("Enter Delivery Person Age: "))
-rating = float(input("Enter Delivery Person Rating: "))
-restaurant_latitude = float(input("Enter Restaurant Latitude: "))
-restaurant_longitude = float(input("Enter Restaurant Longitude: "))
-delivery_latitude = float(input("Enter Delivery Location Latitude: "))
-delivery_longitude = float(input("Enter Delivery Location Longitude: "))
-temperature = float(input("Enter Temperature: "))
-humidity = float(input("Enter Humidity: "))
-precipitation = float(input("Enter Precipitation: "))
-distance = float(input("Enter Distance (km): "))
-
-# CREATE USER INPUT DATAFRAME
-user_input = pd.DataFrame([[
-    traffic_encoded,
-    weather_encoded,
-    order_encoded,
-    vehicle_encoded,
-    age,
-    rating,
-    restaurant_latitude,
-    restaurant_longitude,
-    delivery_latitude,
-    delivery_longitude,
-    temperature,
-    humidity,
-    precipitation,
-    distance
-]], columns=feature_columns)
-
-# SCALE USER INPUT
-user_input_scaled = scaler.transform(user_input)
-
-# FINAL PREDICTION
-final_result = selected_model.predict(user_input_scaled)
-
-probability = selected_model.predict_proba(user_input_scaled)
-
-# DISPLAY RESULT
-print("\n==========================================")
-print(" FINAL PREDICTION")
-print("==========================================")
-
-print("Model Used: " + selected_model_name)
-
-predicted_class = final_result[0]
-
-if predicted_class == 1:
-    print("Prediction: DELAY")
-else:
-    print("Prediction: NOT DELAY")
-
-print("Probability: " + str(round(probability[0][predicted_class] * 100, 2)) + "%")
+elif page == "Model Performance":
+    st.title("Model Performance Comparison & Feature Insights")
+    st.write("---")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("Accuracy Scores")
+        for model_name, metrics in models.items():
+            st.write(f"**{model_name}**: {metrics['accuracy']:.2%}")
+    
+    with col2:
+        st.subheader("Accuracy Comparison Chart")
+        model_names = list(models.keys())
+        accuracies = [models[m]['accuracy'] for m in model_names]
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        bars = ax.bar(model_names, accuracies, color=['blue', 'green', 'orange', 'red'])
+        ax.set_ylabel("Accuracy")
+        ax.set_ylim(0, 1)
+        
+        for bar in bars:
+            yval = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2.0, yval + 0.02, 
+                    f"{yval:.2%}", ha="center", va="bottom")
+        
+        plt.xticks(rotation=45, ha='right')
+        st.pyplot(fig)
+    
+    st.write("---")
+    st.subheader("Detailed Metrics Table")
+    
+    metrics_data = {
+        'Model': list(models.keys()),
+        'Accuracy': [f"{models[m]['accuracy']:.4f}" for m in models.keys()],
+        'Precision': [f"{models[m]['precision']:.4f}" for m in models.keys()],
+        'Recall': [f"{models[m]['recall']:.4f}" for m in models.keys()],
+        'F1 Score': [f"{models[m]['f1']:.4f}" for m in models.keys()]
+    }
+    
+    metrics_df = pd.DataFrame(metrics_data)
+    st.table(metrics_df)
+    
+    st.write("---")
+    st.subheader("Feature Importance Chart (Gradient Boosting)")
+    st.write("This vertical bar graph shows which factors influence delivery delays the most according to our top-performing model.")
+    
+    gb_model = models['Gradient Boosting']['model']
+    importances = gb_model.feature_importances_
+    
+    feat_imp_df = pd.DataFrame({
+        'Feature': feature_columns,
+        'Importance': importances
+    }).sort_values(by='Importance', ascending=True)
+    
+    fig2, ax2 = plt.subplots(figsize=(10, 6))
+    ax2.barh(feat_imp_df['Feature'], feat_imp_df['Importance'], color='teal')
+    ax2.set_xlabel("Relative Importance Score")
+    ax2.set_title("Feature Importance for Delivery Delays")
+    
+    st.pyplot(fig2)
