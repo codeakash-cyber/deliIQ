@@ -15,21 +15,21 @@ warnings.filterwarnings("ignore")
 st.set_page_config(page_title="DeliIQ - Delivery Delay Predictor", layout="wide")
 
 # Set visual style for charts
-sns.lib = sns.set_theme(style="whitegrid")
+sns.set_theme(style="whitegrid")
 
 @st.cache_data
 def load_and_process_data():
     df = pd.read_csv("Food_Time new.csv")
     
-# Categorical columns
-categorical_columns = ["Traffic_Level","weather_description","Type_of_order", "Type_of_vehicle"]
+    # Categorical columns
+    categorical_columns = ["Traffic_Level","weather_description","Type_of_order", "Type_of_vehicle"]
 
     for col in categorical_columns:
         if col in df.columns:
             df[col] = df[col].fillna(df[col].mode()[0])
 
-# Numerical columns
-numerical_columns = ["Delivery_person_Age","Delivery_person_Ratings","temperature","humidity", "precipitation","Distance (km)"]
+    # Numerical columns
+    numerical_columns = ["Delivery_person_Age","Delivery_person_Ratings","temperature","humidity", "precipitation","Distance (km)"]
 
     for col in numerical_columns:
         if col in df.columns:
